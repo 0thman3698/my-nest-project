@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  DefaultValuePipe,
   Delete,
   Get,
   Param,
@@ -47,8 +48,10 @@ export class ReviewsController {
   @ApiQuery({ name: 'reviewPerPage', required: true })
   @ApiSecurity('bearer')
   public getAllReviews(
-    @Query('pageNumber', ParseIntPipe) pageNumber: number,
-    @Query('reviewPerPage', ParseIntPipe) reviewPerPage: number,
+    @Query('pageNumber', new DefaultValuePipe(1), ParseIntPipe)
+    pageNumber: number,
+    @Query('reviewPerPage', new DefaultValuePipe(10), ParseIntPipe)
+    reviewPerPage: number,
   ) {
     return this.reviewsService.getAll(pageNumber, reviewPerPage);
   }

@@ -102,7 +102,6 @@ export class ReviewsService {
       where: { id },
     });
     if (!review) throw new NotFoundException('review not found');
-    console.log(review);
 
     return review;
   }
