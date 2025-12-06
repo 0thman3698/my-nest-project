@@ -10,34 +10,21 @@ import { ProductsModule } from './products/products.module';
 import { UsersModule } from './users/users.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Product } from './products/product.entity';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { User } from './users/user.entity';
-import { Review } from './reviews/review.entity';
+import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { UploadsModule } from './uploads/uploads.module';
 import { MailModule } from './mail/mail.module';
 import { LoggerMiddleware } from './utils/middlewares/logger.middleware';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { dataSourceOptions } from '../db/data-source';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: `.env.${process.env.NODE_ENV}`,
     }),
-    TypeOrmModule.forRootAsync({
-      useFactory: (configService: ConfigService) => ({
-        type: 'postgres',
-        database: configService.get('DB_DATABASE'),
-        username: configService.get('DB_USERNAME'),
-        password: configService.get<string>('DB_PASSWORD'),
-        port: configService.get('DB_PORT'),
-        host: configService.get('DB_HOST'),
-        synchronize: process.env.NODE_ENV !== 'production',
-        entities: [Product, User, Review],
-      }),
-      inject: [ConfigService],
-    }),
+    TypeOrmModule.forRoot(dataSourceOptions),
     ThrottlerModule.forRoot([
       {
         name: 'short',
@@ -87,3 +74,18 @@ export class AppModule implements NestModule {
       .forRoutes({ path: '*', method: RequestMethod.ALL });
   }
 }
+
+// ///LOCAL DB
+// {
+//       useFactory: (configService: ConfigService) => ({
+//         type: 'postgres',
+//         database: configService.get('DB_DATABASE'),
+//         username: configService.get('DB_USERNAME'),
+//         password: configService.get<string>('DB_PASSWORD'),
+//         port: configService.get('DB_PORT'),
+//         host: configService.get('DB_HOST'),
+//         synchronize: process.env.NODE_ENV !== 'production',
+//         entities: [Product, User, Review],
+//       }),
+//       inject: [ConfigService],
+//     }

@@ -46,8 +46,13 @@ export class AuthProvider {
       throw new BadRequestException('Verification token missing');
     }
     const link = this.generateLink(newUser.id, newUser.verificationToken);
-
-    await this.mailService.sendVerifyEmailTemplate(email, link);
+    try {
+      await this.mailService.sendVerifyEmailTemplate(email, link);
+    } catch (err) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      console.log('Email error:', err.message);
+      throw new BadRequestException('Error sending verification email');
+    }
 
     return {
       message:
