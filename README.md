@@ -65,6 +65,7 @@ A comprehensive NestJS API for managing products, users, reviews, and file uploa
 | **Framework**      | NestJS 11.0.1                                   |
 | **Language**       | TypeScript 5.7.3                                |
 | **Database**       | PostgreSQL + TypeORM 0.3.27                     |
+| **Caching**        | Redis (cache-manager-ioredis / Upstash)         |
 | **Authentication** | JWT @nestjs/jwt 11.0.1                          |
 | **Validation**     | class-validator 0.14.2, class-transformer 0.5.1 |
 | **Email**          | @nestjs-modules/mailer 2.0.2, Nodemailer 7.0.10 |
@@ -81,6 +82,7 @@ A comprehensive NestJS API for managing products, users, reviews, and file uploa
 - **npm**: v9+
 - **PostgreSQL**: v12+
 - **Git**: For version control
+- **Redis**: v6+ (recommended for caching; optional for basic usage but required for cache-related tests)
 
 ---
 
