@@ -7,6 +7,8 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Product } from './product.entity';
 import { Repository } from 'typeorm';
 import { CreateProductDto } from './dtos/create-product.dto';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 type ProductTestType = { id: number; title: string; price: number };
 type Options = {
   where: { title?: string; minPrice?: number; maxprice?: number };
@@ -36,6 +38,19 @@ describe('ProductsService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProductsService,
+        {
+          provide: CACHE_MANAGER,
+          useValue: {
+            get: jest.fn().mockResolvedValue(undefined),
+            set: jest.fn().mockResolvedValue(undefined),
+            store: {
+              getClient: jest.fn(() => ({
+                keys: jest.fn().mockResolvedValue([]),
+                del: jest.fn().mockResolvedValue(0),
+              })),
+            },
+          } as unknown as Cache,
+        },
         {
           provide: UsersService,
           useValue: {
@@ -120,6 +135,54 @@ describe('ProductsService', () => {
       const data = await productsService.getProducts();
       expect(data).toHaveLength(4);
       expect(data).toBe(products);
+    });
+  });
+
+  // Caching behavior
+  describe('caching behavior', () => {
+    it('should return cached products when cache hit', async () => {
+      const cache = (productsService as any).cacheManager as Cache;
+      jest.spyOn(cache, 'get').mockResolvedValue(products as any);
+
+      const data = await productsService.getProducts('book');
+
+      expect(cache.get).toHaveBeenCalledWith('products:book::');
+      expect(productsRepository.find).not.toHaveBeenCalled();
+      expect(data).toBe(products as any);
+    });
+
+    it('should set cache on miss', async () => {
+      const cache = (productsService as any).cacheManager as Cache;
+      const setSpy = jest.spyOn(cache, 'set');
+      jest.spyOn(cache, 'get').mockResolvedValue(undefined);
+
+      const data = await productsService.getProducts();
+
+      expect(productsRepository.find).toHaveBeenCalled();
+      expect(setSpy).toHaveBeenCalled();
+      expect(data).toBeDefined();
+    });
+
+    it('should invalidate product keys on create/update/delete', async () => {
+      const cache = (productsService as any).cacheManager as any;
+      const client = {
+        keys: jest.fn().mockResolvedValue(['products:all::']),
+        del: jest.fn().mockResolvedValue(1),
+      };
+      // override getClient to return our test client
+      cache.store.getClient = jest.fn(() => client);
+
+      await productsService.createProduct(createProductDto, 1);
+      expect(client.keys).toHaveBeenCalledWith('products:*');
+      expect(client.del).toHaveBeenCalledWith('products:all::');
+
+      // update an existing product (id 1 exists in mocked products)
+      await productsService.updateProductById(1, { title: 'updated' } as any);
+      expect(client.keys).toHaveBeenCalled();
+
+      // delete an existing product
+      await productsService.deleteProductById(1);
+      expect(client.keys).toHaveBeenCalled();
     });
   });
 
