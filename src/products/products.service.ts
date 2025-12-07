@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Product } from './product.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { UpdateProductDto } from './dtos/update-product.dto';
@@ -6,6 +7,7 @@ import { CreateProductDto } from './dtos/create-product.dto';
 import { Between, Like, Repository } from 'typeorm';
 import { NotFoundException } from '@nestjs/common';
 import { UsersService } from '../users/users.service';
+import type { Cache } from 'cache-manager';
 
 @Injectable()
 export class ProductsService {
@@ -13,6 +15,7 @@ export class ProductsService {
     @InjectRepository(Product)
     private readonly productRepository: Repository<Product>,
     private readonly usersService: UsersService,
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
   ) {}
   /**
    * Create a new product
@@ -30,24 +33,33 @@ export class ProductsService {
       title: createProductDto.title.toLowerCase(),
       user,
     });
-    return this.productRepository.save(newProduct);
+    const saved = this.productRepository.save(newProduct);
+
+    await this.invalidateProductKeys();
+    return saved;
   }
 
   /**
    * Get all products
    */
-  getProducts(
+  async getProducts(
     title?: string,
     minPrice?: string,
     maxPrice?: string,
   ): Promise<Product[]> {
+    const key = this.makeKey(title?.toLowerCase(), minPrice, maxPrice);
+    const cached = await this.cacheManager.get<Product[]>(key);
+    if (cached) return cached;
+
     const filters = {
       ...(title ? { title: Like(`%${title.toLowerCase()}%`) } : {}),
       ...(minPrice && maxPrice
         ? { price: Between(parseInt(minPrice), parseInt(maxPrice)) }
         : {}),
     };
-    return this.productRepository.find({ where: filters });
+    const products = await this.productRepository.find({ where: filters });
+    await this.cacheManager.set(key, products);
+    return products;
   }
 
   /**
@@ -71,11 +83,11 @@ export class ProductsService {
     updateProductDto: UpdateProductDto,
   ): Promise<Product> {
     const product = await this.getProductById(id);
-    product.title = updateProductDto.title ?? product.title;
-    product.price = updateProductDto.price ?? product.price;
-    product.description = updateProductDto.description ?? product.description;
-    await this.productRepository.save(product);
-    return product;
+    Object.assign(product, updateProductDto);
+
+    const updated = await this.productRepository.save(product);
+    await this.invalidateProductKeys();
+    return updated;
   }
 
   /**
@@ -84,5 +96,22 @@ export class ProductsService {
   async deleteProductById(id: number): Promise<void> {
     const product = await this.getProductById(id);
     await this.productRepository.remove(product);
+    await this.invalidateProductKeys();
+    return;
+  }
+
+  private makeKey(title?: string, minPrice?: string, maxPrice?: string) {
+    return `products:${title ?? 'all'}:${minPrice ?? ''}:${maxPrice ?? ''}`;
+  }
+
+  private async invalidateProductKeys(): Promise<void> {
+    // NOTE: using `keys` can block Redis in production — replace with a tagging strategy or sets in prod.
+    const store: any = (this.cacheManager as any).store;
+    const client = store?.getClient?.() ?? store; // ioredis client
+    if (!client) return;
+
+    // Get keys matching products:* and delete them
+    const keys = await client.keys('products:*');
+    if (keys.length) await client.del(...keys);
   }
 }

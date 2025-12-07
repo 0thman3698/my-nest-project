@@ -10,7 +10,7 @@ import { ProductsModule } from './products/products.module';
 import { UsersModule } from './users/users.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { UploadsModule } from './uploads/uploads.module';
 import { MailModule } from './mail/mail.module';
@@ -18,6 +18,8 @@ import { LoggerMiddleware } from './utils/middlewares/logger.middleware';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { dataSourceOptions } from '../db/data-source';
 import { AppController } from './app.controller';
+import { CacheModule } from '@nestjs/cache-manager';
+import * as redisStore from 'cache-manager-ioredis';
 
 @Module({
   controllers: [AppController],
@@ -28,6 +30,21 @@ import { AppController } from './app.controller';
         process.env.NODE_ENV !== 'production'
           ? `.env.${process.env.NODE_ENV}`
           : '.env',
+    }),
+    CacheModule.registerAsync({
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService) => {
+        const host = configService.get<string>('REDIS_HOST', '127.0.0.1');
+        const port = configService.get<number>('REDIS_PORT', 6379);
+        return {
+          store: redisStore,
+          host,
+          port,
+          ttl: Number(configService.get<number>('REDIS_TTL', 60)),
+        };
+      },
+      inject: [ConfigService],
+      isGlobal: true,
     }),
     TypeOrmModule.forRoot(dataSourceOptions),
     ThrottlerModule.forRoot([
