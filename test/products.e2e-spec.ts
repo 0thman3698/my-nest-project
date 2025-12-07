@@ -302,9 +302,17 @@ describe('ProductsController (e2e)', () => {
       await request(app.getHttpServer()).get('/api/products');
 
       const cacheManager: any = app.get(CACHE_MANAGER);
-      const client = cacheManager.store.getClient();
-      const keysBefore = await client.keys('products:*');
-      expect(keysBefore.length).toBeGreaterThan(0);
+      const store = cacheManager?.store;
+      const client = store?.getClient ? store.getClient() : null;
+
+      if (client) {
+        const keysBefore = await client.keys('products:*');
+        expect(keysBefore.length).toBeGreaterThan(0);
+      } else {
+        // fallback: check via cacheManager.get for the expected key
+        const cached = await cacheManager.get('products:all::');
+        expect(cached).toBeDefined();
+      }
 
       // create another product which should invalidate cache
       await request(app.getHttpServer())
@@ -312,9 +320,14 @@ describe('ProductsController (e2e)', () => {
         .set('Authorization', `Bearer ${accessToken}`)
         .send({ title: 'second', description: 'second product', price: 5 });
 
-      const keysAfter = await client.keys('products:*');
-      // After invalidation keys should be removed
-      expect(keysAfter.length).toBe(0);
+      if (client) {
+        const keysAfter = await client.keys('products:*');
+        // After invalidation keys should be removed
+        expect(keysAfter.length).toBe(0);
+      } else {
+        const cachedAfter = await cacheManager.get('products:all::');
+        expect(cachedAfter).toBeUndefined();
+      }
     });
   });
 });
