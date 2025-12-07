@@ -3,6 +3,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DataSource } from 'typeorm';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 import { AppModule } from '../src/app.module';
 import { Product } from '../src/products/product.entity';
 import { User } from '../src/users/user.entity';
@@ -261,6 +263,58 @@ describe('ProductsController (e2e)', () => {
         .set('Authorization', `Bearer ${accessToken}`);
 
       expect(response.status).toBe(400);
+    });
+  });
+
+  // CACHING: ensure cache is populated and invalidated
+  describe('CACHING', () => {
+    it('should populate cache after GET and serve from cache', async () => {
+      // ensure DB is clean then create one product
+      await dataSource.createQueryBuilder().delete().from(Product).execute();
+      await request(app.getHttpServer())
+        .post('/api/products')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(dto);
+
+      // first request - populates cache
+      const first = await request(app.getHttpServer()).get('/api/products');
+      expect(first.status).toBe(200);
+      expect(first.body).toHaveLength(1);
+
+      const cacheManager = app.get(CACHE_MANAGER) as Cache;
+      const cached = await cacheManager.get('products:all::');
+      expect(cached).toBeDefined();
+
+      // second request - should be served (same response)
+      const second = await request(app.getHttpServer()).get('/api/products');
+      expect(second.status).toBe(200);
+      expect(second.body).toHaveLength(1);
+    });
+
+    it('should invalidate cache after creating a new product', async () => {
+      // start clean
+      await dataSource.createQueryBuilder().delete().from(Product).execute();
+      // create and populate cache
+      await request(app.getHttpServer())
+        .post('/api/products')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send(dto);
+      await request(app.getHttpServer()).get('/api/products');
+
+      const cacheManager: any = app.get(CACHE_MANAGER);
+      const client = cacheManager.store.getClient();
+      const keysBefore = await client.keys('products:*');
+      expect(keysBefore.length).toBeGreaterThan(0);
+
+      // create another product which should invalidate cache
+      await request(app.getHttpServer())
+        .post('/api/products')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .send({ title: 'second', description: 'second product', price: 5 });
+
+      const keysAfter = await client.keys('products:*');
+      // After invalidation keys should be removed
+      expect(keysAfter.length).toBe(0);
     });
   });
 });
